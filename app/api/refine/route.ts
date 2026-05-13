@@ -11,27 +11,30 @@ export async function POST(req: NextRequest) {
       await req.json();
     const userPrompt = buildRefinementPrompt(direction, userMessage);
 
-    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+    const res = await fetch(
+      'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${process.env.GEMINI_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: 'gemini-2.0-flash',
+          temperature: 0.5,
+          max_tokens: 2000,
+          response_format: { type: 'json_object' },
+          messages: [
+            { role: 'system', content: SYSTEM_PROMPT },
+            { role: 'user', content: userPrompt },
+          ],
+        }),
       },
-      body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
-        temperature: 0.5,
-        max_tokens: 2000,
-        response_format: { type: 'json_object' },
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: userPrompt },
-        ],
-      }),
-    });
+    );
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err?.error?.message ?? `Groq API error ${res.status}`);
+      throw new Error(err?.error?.message ?? `Gemini API error ${res.status}`);
     }
 
     const data = await res.json();
@@ -40,11 +43,12 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error('Refine error:', error);
     const msg = error instanceof Error ? error.message : '';
-    const userError = msg.includes('401') || msg.includes('Invalid') || msg.includes('API key')
-      ? 'Invalid Groq API key.'
-      : msg.includes('quota') || msg.includes('rate') || msg.includes('429')
-      ? 'Groq rate limit hit. Please wait a moment and try again.'
-      : 'Refinement failed. Please try again.';
+    const userError =
+      msg.includes('401') || msg.includes('Invalid') || msg.includes('API key')
+        ? 'Invalid Gemini API key.'
+        : msg.includes('quota') || msg.includes('rate') || msg.includes('429')
+        ? 'Gemini rate limit hit. Please wait a moment and try again.'
+        : 'Refinement failed. Please try again.';
     return NextResponse.json({ error: userError }, { status: 500 });
   }
 }
