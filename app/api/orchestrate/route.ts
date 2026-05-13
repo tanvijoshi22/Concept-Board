@@ -111,20 +111,16 @@ export async function POST(req: NextRequest) {
         }
         send({ step: 2, status: 'done' });
 
-        // Step 3 — Mood Board (parallel, non-fatal)
+        // Step 3 — Mood Board (sequential to avoid Groq rate limits)
         send({ step: 3, status: 'running' });
-        const [mb1, mb2] = await Promise.all([
-          runMoodBoard(concepts.directions[0]).catch(() => null),
-          runMoodBoard(concepts.directions[1]).catch(() => null),
-        ]);
+        const mb1 = await runMoodBoard(concepts.directions[0]).catch(() => null);
+        const mb2 = await runMoodBoard(concepts.directions[1]).catch(() => null);
         send({ step: 3, status: 'done' });
 
-        // Step 4 — Foundations (parallel, non-fatal)
+        // Step 4 — Foundations (sequential to avoid Groq rate limits)
         send({ step: 4, status: 'running' });
-        const [f1, f2] = await Promise.all([
-          runFoundations({ brief, concept: concepts.directions[0], moodBoard: mb1 }).catch(() => null),
-          runFoundations({ brief, concept: concepts.directions[1], moodBoard: mb2 }).catch(() => null),
-        ]);
+        const f1 = await runFoundations({ brief, concept: concepts.directions[0], moodBoard: mb1 }).catch(() => null);
+        const f2 = await runFoundations({ brief, concept: concepts.directions[1], moodBoard: mb2 }).catch(() => null);
         send({ step: 4, status: 'done' });
 
         // Step 5 — Bundle
