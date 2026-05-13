@@ -70,13 +70,14 @@ async function fetchUnsplashImage(
     }
   }
 
-  // Fallback: Unsplash Source (no key required)
+  // Fallback: Loremflickr (no key required, uses Flickr photos with keyword search)
+  const keywords = query.split(' ').slice(0, 4).join(',');
   return {
-    url: `https://source.unsplash.com/800x600/?${encodeURIComponent(query)}`,
-    thumb: `https://source.unsplash.com/400x300/?${encodeURIComponent(query)}`,
+    url: `https://loremflickr.com/800/600/${encodeURIComponent(keywords)}`,
+    thumb: `https://loremflickr.com/400/300/${encodeURIComponent(keywords)}`,
     alt: query,
-    credit: 'Unsplash',
-    creditLink: 'https://unsplash.com/?utm_source=concept_board_generator&utm_medium=referral',
+    credit: 'Flickr',
+    creditLink: 'https://flickr.com',
   };
 }
 

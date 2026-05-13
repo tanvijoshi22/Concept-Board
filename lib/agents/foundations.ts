@@ -95,6 +95,6 @@ export async function runFoundations(input: FoundationsInput): Promise<Foundatio
     FOUNDATIONS_SYSTEM_PROMPT,
     buildFoundationsPrompt(input),
     0.5,
-    2500,
+    4000,
   ) as Promise<FoundationsOutput>;
 }
