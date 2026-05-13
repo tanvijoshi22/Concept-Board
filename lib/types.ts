@@ -25,17 +25,25 @@ export interface Typography {
 
 export interface Keyword {
   word: string;
-  icon?: string;         // Tabler icon name, e.g. "ti-crown"
-  framingPhrase?: string; // e.g. "Empower to be"
+  icon?: string;
+  framingPhrase?: string;
   explanation: string;
+  visualManifestations?: string[];
 }
 
 export interface MoodBoardSuggestion {
-  keyword: string;       // which concept name or keyword this represents
-  emotion: string;       // specific feeling to evoke
+  keyword: string;
+  emotion: string;
   category: string;
   description: string;
   searchQuery: string;
+  // Pre-fetched by Agent 3
+  imageUrl?: string | null;
+  imageThumb?: string | null;
+  imageAlt?: string;
+  imageCredit?: string;
+  imageCreditLink?: string;
+  colorNote?: string;
 }
 
 export interface MoodBoardImage {
@@ -97,6 +105,7 @@ export interface AppState {
   step: AppStep;
   answers: SessionAnswers;
   directions: [ConceptDirection, ConceptDirection] | null;
+  brief: import('@/lib/types/agents').AnalystOutput | null;
   selectedDirectionId: 'direction_1' | 'direction_2' | null;
   refinementHistory: RefinementMessage[];
   showRefinement: boolean;

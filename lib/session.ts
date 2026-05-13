@@ -22,6 +22,7 @@ export const DEFAULT_STATE: AppState = {
   step: 'welcome',
   answers: DEFAULT_ANSWERS,
   directions: null,
+  brief: null,
   selectedDirectionId: null,
   refinementHistory: [],
   showRefinement: false,

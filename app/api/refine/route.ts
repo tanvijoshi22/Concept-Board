@@ -1,50 +1,109 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { buildRefinementPrompt } from '@/lib/prompts';
-import { ConceptDirection } from '@/lib/types';
-
-const SYSTEM_PROMPT =
-  'You are an expert UI/UX design strategist. Always respond with valid JSON only. No explanation. No markdown. No code fences. Pure JSON.';
+import { runConceptRefiner } from '@/lib/agents/concept';
+import { runMoodBoard } from '@/lib/agents/moodboard';
+import { runFoundations } from '@/lib/agents/foundations';
+import { AnalystOutput, AgentConceptDirection } from '@/lib/types/agents';
+import { ConceptDirection, MoodBoardSuggestion } from '@/lib/types';
 
 export async function POST(req: NextRequest) {
   try {
-    const { direction, userMessage }: { direction: ConceptDirection; userMessage: string } =
-      await req.json();
-    const userPrompt = buildRefinementPrompt(direction, userMessage);
+    const { direction, brief, userMessage }: {
+      direction: ConceptDirection;
+      brief: AnalystOutput | null;
+      userMessage: string;
+    } = await req.json();
 
-    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
-        temperature: 0.5,
-        max_tokens: 2000,
-        response_format: { type: 'json_object' },
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: userPrompt },
-        ],
-      }),
-    });
+    // Reconstruct an AgentConceptDirection from the stored ConceptDirection
+    const currentConcept: AgentConceptDirection = {
+      id: direction.id,
+      conceptName: direction.conceptName,
+      positioningStatement: '',
+      tagline: direction.tagline,
+      keywords: direction.keywords.map((kw) => ({
+        word: kw.word,
+        framingPhrase: kw.framingPhrase ?? '',
+        icon: kw.icon ?? 'ti-star',
+        explanation: kw.explanation,
+        visualManifestations: kw.visualManifestations ?? [],
+      })),
+      aestheticArchetype: 'Minimal',
+      differentiatorFromDirection2: '',
+    };
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err?.error?.message ?? `Groq API error ${res.status}`);
-    }
+    // Fallback brief if not provided
+    const effectiveBrief: AnalystOutput = brief ?? {
+      productSummary: '',
+      userProfile: { type: '', context: '', primaryNeed: '', emotionalState: '' },
+      businessIntent: { perceptionGoals: [], personalityWords: [], visualAdmirations: '', visualAvoidances: '', positioningStatement: '' },
+      marketContext: { competitors: [], competitorVisualPattern: '', differentiationOpportunity: '' },
+      designBriefStatement: '',
+      suggestedConceptTone: [],
+    };
 
-    const data = await res.json();
-    const content = data.choices[0].message.content as string;
-    return NextResponse.json(JSON.parse(content));
+    // Agent 2: refine the concept
+    const updatedConcept = await runConceptRefiner(effectiveBrief, currentConcept, userMessage);
+
+    // Agent 3: new mood board
+    const moodBoard = await runMoodBoard(updatedConcept).catch(() => null);
+
+    // Agent 4: new foundations
+    const foundations = await runFoundations({
+      brief: effectiveBrief,
+      concept: updatedConcept,
+      moodBoard,
+    }).catch(() => null);
+
+    const moodBoardImageSuggestions: MoodBoardSuggestion[] = moodBoard
+      ? moodBoard.moodBoardSuggestions.map((s) => ({
+          keyword: s.keyword,
+          emotion: s.emotion,
+          category: s.category,
+          description: s.description,
+          searchQuery: s.searchQuery,
+          imageUrl: s.imageUrl,
+          imageThumb: s.imageThumb,
+          imageAlt: s.imageAlt,
+          imageCredit: s.imageCredit,
+          imageCreditLink: s.imageCreditLink,
+          colorNote: s.colorNote,
+        }))
+      : direction.moodBoardImageSuggestions;
+
+    const updated: ConceptDirection = {
+      id: direction.id,
+      conceptName: updatedConcept.conceptName,
+      tagline: updatedConcept.tagline,
+      keywords: updatedConcept.keywords.map((kw) => ({
+        word: kw.word,
+        icon: kw.icon,
+        framingPhrase: kw.framingPhrase,
+        explanation: kw.explanation,
+        visualManifestations: kw.visualManifestations,
+      })),
+      colorPalette: foundations
+        ? { rationale: foundations.colorPalette.rationale, colors: foundations.colorPalette.colors, theme: foundations.colorPalette.theme }
+        : direction.colorPalette,
+      typography: foundations
+        ? {
+            rationale: foundations.typography.rationale,
+            displayFont: { name: foundations.typography.displayFont.name, source: 'Google Fonts', usage: foundations.typography.displayFont.usage, personality: foundations.typography.displayFont.personality },
+            bodyFont: { name: foundations.typography.bodyFont.name, source: 'Google Fonts', usage: foundations.typography.bodyFont.usage, personality: foundations.typography.bodyFont.personality },
+          }
+        : direction.typography,
+      moodBoardImageSuggestions,
+      uiInspirationReferences: foundations?.uiInspirationReferences ?? direction.uiInspirationReferences,
+      designPersonality: foundations?.visualPersonality.overallDescription ?? direction.designPersonality,
+    };
+
+    return NextResponse.json(updated);
   } catch (error) {
     console.error('Refine error:', error);
     const msg = error instanceof Error ? error.message : '';
     const userError =
-      msg.includes('401') || msg.includes('Invalid') || msg.includes('API key')
+      msg.includes('401') || msg.includes('API key')
         ? 'Invalid Groq API key.'
-        : msg.includes('quota') || msg.includes('rate') || msg.includes('429')
-        ? 'Groq rate limit hit. Please wait a moment and try again.'
+        : msg.includes('rate') || msg.includes('429')
+        ? 'Rate limit hit. Please wait a moment.'
         : 'Refinement failed. Please try again.';
     return NextResponse.json({ error: userError }, { status: 500 });
   }

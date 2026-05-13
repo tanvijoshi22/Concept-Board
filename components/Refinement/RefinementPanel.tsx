@@ -2,10 +2,12 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { ConceptDirection, RefinementMessage } from '@/lib/types';
+import { AnalystOutput } from '@/lib/types/agents';
 import Button from '../shared/Button';
 
 interface RefinementPanelProps {
   direction: ConceptDirection;
+  brief: AnalystOutput | null;
   history: RefinementMessage[];
   onUpdate: (updated: ConceptDirection) => void;
   onHistoryUpdate: (history: RefinementMessage[]) => void;
@@ -14,6 +16,7 @@ interface RefinementPanelProps {
 
 export default function RefinementPanel({
   direction,
+  brief,
   history,
   onUpdate,
   onHistoryUpdate,
@@ -46,7 +49,7 @@ export default function RefinementPanel({
       const res = await fetch('/api/refine', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ direction, userMessage: message }),
+        body: JSON.stringify({ direction, brief, userMessage: message }),
       });
 
       if (!res.ok) {

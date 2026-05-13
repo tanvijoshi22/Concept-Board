@@ -16,6 +16,8 @@ export default function HomePage() {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [generationLoading, setGenerationLoading] = useState(false);
+  const [loadingStep, setLoadingStep] = useState(1);
+  const [completedSteps, setCompletedSteps] = useState<number[]>([]);
 
   const handleAnswerChange = useCallback((updates: Partial<SessionAnswers>) => {
     setState((prev) => ({ ...prev, answers: { ...prev.answers, ...updates } }));
@@ -32,27 +34,58 @@ export default function HomePage() {
   const handleGenerate = useCallback(async () => {
     setGenerationLoading(true);
     setGenerationError(null);
+    setLoadingStep(1);
+    setCompletedSteps([]);
     setState((prev) => ({ ...prev, step: 'loading' }));
 
     try {
-      const res = await fetch('/api/generate', {
+      const res = await fetch('/api/orchestrate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(state.answers),
       });
 
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Generation failed');
-      }
+      if (!res.body) throw new Error('No response stream');
 
-      const data = await res.json();
-      setState((prev) => ({
-        ...prev,
-        step: 'results',
-        directions: data.directions,
-        error: null,
-      }));
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() ?? '';
+
+        for (const part of parts) {
+          if (!part.startsWith('data: ')) continue;
+          const event = JSON.parse(part.slice(6));
+
+          if (event.error) {
+            setGenerationError(event.error);
+            setState((prev) => ({ ...prev, step: 4 }));
+            setGenerationLoading(false);
+            return;
+          }
+          if (event.step && event.status === 'running') {
+            setLoadingStep(event.step);
+          }
+          if (event.step && event.status === 'done') {
+            setCompletedSteps((prev) => [...prev, event.step]);
+            if (event.result) {
+              setState((prev) => ({
+                ...prev,
+                step: 'results',
+                directions: event.result.directions,
+                brief: event.result.brief,
+                error: null,
+              }));
+            }
+          }
+        }
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Something went wrong. Please try again.';
       setGenerationError(message);
@@ -138,7 +171,7 @@ export default function HomePage() {
             error={generationError}
           />
         )}
-        {state.step === 'loading' && <LoadingScreen />}
+        {state.step === 'loading' && <LoadingScreen currentStep={loadingStep} completedSteps={completedSteps} />}
         {state.step === 'results' && state.directions && (
           <ResultsScreen
             directions={state.directions}
@@ -156,6 +189,7 @@ export default function HomePage() {
           />
           <RefinementPanel
             direction={selectedDirection}
+            brief={state.brief}
             history={state.refinementHistory}
             onUpdate={handleDirectionUpdate}
             onHistoryUpdate={handleHistoryUpdate}

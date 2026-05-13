@@ -119,6 +119,24 @@ export default function MoodBoardSuggestions({
   const [images, setImages] = useState<MoodBoardImage[] | null>(null);
 
   useEffect(() => {
+    // If Agent 3 pre-fetched images, use them directly
+    if (suggestions.length > 0 && suggestions[0].imageUrl !== undefined) {
+      setImages(
+        suggestions.map((s) => ({
+          keyword: s.keyword,
+          emotion: s.emotion,
+          category: s.category,
+          url: s.imageUrl ?? null,
+          thumb: s.imageThumb ?? undefined,
+          alt: s.imageAlt ?? s.searchQuery,
+          credit: s.imageCredit ?? 'Unsplash',
+          creditLink: s.imageCreditLink ?? 'https://unsplash.com',
+        })),
+      );
+      return;
+    }
+
+    // Fallback: fetch client-side via legacy /api/moodboard route
     async function fetchImages() {
       try {
         const res = await fetch('/api/moodboard', {
@@ -133,7 +151,6 @@ export default function MoodBoardSuggestions({
       }
     }
     fetchImages();
-    // Run once per mount — suggestions won't change after initial render
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
