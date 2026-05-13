@@ -1,12 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { buildRefinementPrompt } from '@/lib/prompts';
 import { ConceptDirection } from '@/lib/types';
 
 const SYSTEM_PROMPT =
   'You are an expert UI/UX design strategist. Always respond with valid JSON only. No explanation. No markdown. No code fences. Pure JSON.';
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
 export async function POST(req: NextRequest) {
   try {
@@ -14,27 +11,40 @@ export async function POST(req: NextRequest) {
       await req.json();
     const userPrompt = buildRefinementPrompt(direction, userMessage);
 
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash',
-      systemInstruction: SYSTEM_PROMPT,
-      generationConfig: {
-        responseMimeType: 'application/json',
-        temperature: 0.5,
-        maxOutputTokens: 2000,
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
       },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        temperature: 0.5,
+        max_tokens: 2000,
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user', content: userPrompt },
+        ],
+      }),
     });
 
-    const result = await model.generateContent(userPrompt);
-    const content = result.response.text();
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err?.error?.message ?? `Groq API error ${res.status}`);
+    }
+
+    const data = await res.json();
+    const content = data.choices[0].message.content as string;
     return NextResponse.json(JSON.parse(content));
   } catch (error) {
     console.error('Refine error:', error);
-    const msg = error instanceof Error ? error.message : String(error);
+    const msg = error instanceof Error ? error.message : '';
     const userError =
-      msg.includes('API_KEY') || msg.includes('401') || msg.includes('API key')
-        ? 'Invalid Gemini API key.'
-        : msg.includes('quota') || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('429')
-        ? 'Gemini quota exceeded. Wait a moment or check your API limits at aistudio.google.com.'
+      msg.includes('401') || msg.includes('Invalid') || msg.includes('API key')
+        ? 'Invalid Groq API key.'
+        : msg.includes('quota') || msg.includes('rate') || msg.includes('429')
+        ? 'Groq rate limit hit. Please wait a moment and try again.'
         : 'Refinement failed. Please try again.';
     return NextResponse.json({ error: userError }, { status: 500 });
   }
